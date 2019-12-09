@@ -45,6 +45,9 @@
 // *  Not to mention, smaller and can be redundant on multiple systems.
 // *  
 // ***************************************************************************************
+// *  V 2.02  _191209
+// *    - Added and rearanged source code and comments to make initial setup easier.
+// *
 // *  V 2.01  _191128
 // *    - Added non delay loop - code then modified from Arudino Tutorial   http://www.arduino.cc/en/Tutorial/BlinkWithoutDelay
 // *    - Added Blink Routine then removed.  It has stayed in comment form as an example.
@@ -58,22 +61,33 @@
 
 #include "Joystick.h"
 Joystick_ Joystick;
-  
-  // Vars -----
 
-  // Enable Serial Monitor for testing
-  const boolean booTest = false;
-  //  Testing Data Collection
-  //  These two variables are kinda stupid.  Why cant I conditionally scope local vaibles at compile time.
-  //  Better to assign them here and not use them, than to create and destroy them with every cycle.
-  int tstxAxis = 0;
-  int tstyAxis = 0;
+  // --- Current Pin Layout ---
+  // PIN 6   - Joystick Button
+  // PIN A0  - X axis
+  // PIN A1  - Y axis
+  // PIN GND - Joystick Ground
+  // PIN 3.5 - Joystick Power
+
+  // --- Setup ---
+
+  // Voltage
+  //    Are you powering the joystick with the 5V pin or the 3.5V pin?  Pick one or the other (HARDWARE HACK)
+  // Voltage flow offset: 3.3V is 1.5151, 5V is 1
+  // w 3.3 v range is 0 = 675.84 and mid is 337.92 -note
+  // Calc XYMid =  338, XYMax 0 - 676              -note
+  
+  //const float floVOffset = 1;       // is used for 5V
+       // or
+  const float floVOffset = 1.5151;  // is used for 3.5V
 
   // Inverse Axis
   const boolean booXInverse = false;
   const boolean booYInverse = true;
 
   // Tuning -- instead.
+  //    My joystick was cheap.  Midpoint was inaccurate.  While in debug I figured out how far off and then readjusted the
+  //    midpoint with these falues
   // In futuer, auto tune this on controller start based on first
   // first read position and distance from 512.
   const int intXtune = 6;
@@ -81,27 +95,39 @@ Joystick_ Joystick;
   const int intDeadZone = 2 ;   // Reentroducing deadzones
 
   // Precision slope and Breakaway Point
+  //    Not sure how to explain this except by example.  If joystick is at halfway point of upermost and mid position and
+  //    slope is 2 or (1/2), then the joystick position will be reported as at the 1/4 point of upermost and mid position.
+  //    Also, if breakpoint is .90 or 90%, then at 10% and above away from the joysticks upper limit, then the position will
+  //    be reported as max upper limit
+  //      Note: These are thruster controls.  I need either precision or full on.  
   // Slope is rep by 1/#.  eg, Slope 2 = 1/2 = .5, 4 = .25, ...
   // Break point . 9 represents 90%
   const int intSlopeTune = 2;
   const float intBreakTune = .98;
 
-  //  HARDWARE HACK
-  // Voltage flow offset: 3.3V is 1.5151, 5V is 1
-  // w 3.3 v range is 0 = 675.84 and mid is 337.92 -note
-  // Calc XYMid =  338, XYMax 0 - 676              -note
-  const float floVOffset = 1.5151; 
+  // Enable Serial Monitor for testing
+  //    Enabling booTest will slow the board time and enable the serial monitor to be read.
+  const boolean booTest = false;
+  //  Testing Data Collection
+  //  These two variables are kinda stupid.  Why cant I conditionally scope local vaibles at compile time.
+  //  Better to assign them here and not use them, than to create and destroy them with every cycle.
+  int tstxAxis = 0;
+  int tstyAxis = 0;
 
   // Adjust joystick end to end limits value.
   // doesnt work yet and never finished.
   //const float floMag = .3; 
 
-  // constants won't change. Used here to set a pin number:
-  const int ledPin =  LED_BUILTIN;// the number of the LED pin
-
   // Delayless Loop Variables
+  //    intRestTime defines the amount of time, in miliseconds, passed before another data read pass is performed
+  //    and transmitted from the controller to the main system.
   unsigned long tmePrevMillis = 0;   
   int intRestTime = 46;        // Do not check for update until resttime is passed
+
+  // --- End Setup ---
+  
+  // constants won't change. Used here to set a pin number:
+  const int ledPin =  LED_BUILTIN;// the number of the LED pin
 
   // // Blink Variables
   int ledState = LOW;                // ledState used to set the LED
