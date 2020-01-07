@@ -58,7 +58,7 @@
 // *                yeah, he has the rank to put me out on a suicide mission.
 // *    - Learned how to program fuctions in this silly language.
 // *    - Created functions for several bits of code that was called more than one.
-// *    - No real code changes
+// *    - No real code changes.
 // *    - Tied this program to the hub, I hope.
 // *
 // *  V 2.02  _191209
