@@ -363,6 +363,14 @@ float fltPrecisionBreakaway (float fltJoyVal, int intSlope, float fltBreak)
     //  limits being passed.  And, I dont' have to worry about that dang x^3 curve.  Oh,
     //  the AI thinks its so smart by programming its cool curves and all.  I think
     //  <REDACTED>
+    // **************************************************************************** \\
+    // * CENSOR EDIT:                                                               \\
+    // *   WITH COMPLIANCE TO THE DEFENDANTS’ MOTION FOR EXPEDITED CLARIFICATION    \\
+    // *   OR, IN THE ALTERNATIVE, MODIFICATION OF THE FEAHC (CASE:BF0N9SXCEnwvB7)  \\
+    // *   ORDER TO PROVIDE MORE INFORMATION REGARDING THE REDACTED STATEMENT,      \\
+    // *   FOLLOWS:                                                                 \\
+    // *      "12 lines were removed."                                              \\
+    // **************************************************************************** \\
 {
     // Y *********
     if (fltJoyVal > 512)
