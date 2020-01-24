@@ -9,7 +9,7 @@
 // *                                                            (c) 2856 Core Dynamics
 // ***************************************************************************************
 // *
-// *  PROJECTID: /*+T,&j<\&59    Revision: 00000002.04A
+// *  PROJECTID: /*+T,&j<\&59    Revision: 00000002.05A
 // *  TEST CODE:                 QACODE: A565              CENSORCODE: myp9C#A*xXP7
 // *
 // ***************************************************************************************
@@ -45,6 +45,27 @@
 // *  Not to mention, smaller and can be redundant on multiple systems.
 // *
 // ***************************************************************************************
+// *
+// *  V 2.05  _200124
+// *    OK.  Boss calls me into the office.  Offers me some sweet brandy.  Tells me to 
+// *    improve this program.  Thats it.  What the hell?  This program was scrap.  
+// *    I see the censor made changes to it, but its not too difficult to see what 
+// *    she/he/it did.  Except, it would be cool if the comments werentn't left out of its
+// *    edits.  Also, I see no, 0000, nothing, zero, nada, pull request for this routine
+// *    So, again, what the hell?
+// *  
+// *    - changing joy memory position from range of 0 to 1024 and a center of 512, to
+// *      range of -512 to 512 with 0 center, to make calculations to joy position easier.
+// *    - changed a few functions to allow me to create a second slope in the future.  
+// *      This will allow me to fine tune the lower joystick positions more accurately.
+// *    - Created a "booTuner" variable that helps me figure out what tuning, 
+// *      breakaway, and deadzone values to use.  
+// *    - CENSOR EDIT:  AS INSTRUCTED, REPORTING "A POLICE SIREN CHIRP WHEN PROGRAMMER 
+// *        IGNITED A WAX CANDLE," SUGGESTING CORRUPT WATCHDOG ROUTINES AND OR INTENT AND 
+// *        OR PURPOSE.  SENDING ALL CORE DATA WITH REPORT TO INTEL CORRESPONDANCE 
+// *        COORDINATOR FOR DETAILED ANALYSIS AND CORRECTIONS.
+// *
+// *
 // *  V 2.04  _200120 (MODIFICATIONS MADE BY CENSOR)
 // *    - ILLEGAL ACCESS DETECTED.  MULTIPLE ANONYMOUS ATTEMPTS TO OBTAIN ORIGINAL CODE
 // *        DETECTED.  WATCHDOG ROUTINES INITIATED.  ACCESS TO ASSOCIATED SYSTEMS
@@ -121,8 +142,8 @@ const boolean booYInverse = true;
 //    midpoint with these values
 // In future, auto tune this on controller start based on first
 // first read position and distance from 512.
-const int intXtune = 6;
-const int intYtune = 7;
+const int intXtune = 3;
+const int intYtune = 10;
 const int intDeadZone = 2 ;   // Reintroducing deadzones
 
 // Precision slope and Breakaway Point
@@ -134,11 +155,13 @@ const int intDeadZone = 2 ;   // Reintroducing deadzones
 // Slope is rep by 1/#.  eg, Slope 2 = 1/2 = .5, 4 = .25, ...
 // Break point . 9 represents 90%
 const int intSlopeTune = 2;
-const int intBreakTune = 7;
+const int intBreakTune = 12;
 
 // Enable Serial Monitor for testing
 //    Enabling booTest will slow the board time and enable the serial monitor to be read.
 const boolean booTest = false;
+//    Enabling booTuner will enable serial moniter to display tuning information
+const boolean booTuner = false;
 //  Testing Data Collection
 //  These two variables are kind of stupid.  Why cant I conditionally scope local variables at compile time.
 //  Better to assign them here and not use them, than to create and destroy them with every cycle.
@@ -181,14 +204,31 @@ float fltJoyTuneInverse (float fltAxisVal, int intTune, boolean booInverse)
 //  This function will clean the newly read joystick value by adjusting its passed tune
 //  and invert the value if requested.
 {
+  //  Adjust 0-1024 512 center value to 0 center. Range unchecked.
+  fltAxisVal = fltAxisVal - 512;
+
+  if (booTuner == true)
+  {
+      Serial.print("TUNING: Suggested Tune Val : (+-)");
+      Serial.print(fltAxisVal);
+  }
+
   if (booInverse == true)
   {
-    fltAxisVal = 1024 - fltAxisVal + intTune;
+    fltAxisVal = intTune - fltAxisVal;
   }
   else
   {
-    fltAxisVal = fltAxisVal + intTune;
+    fltAxisVal = intTune + fltAxisVal;
   }
+
+  if (booTuner == true)
+  {
+      Serial.print(" Reporting: ");
+      Serial.print(fltAxisVal);
+      Serial.println();
+  }
+  
   return fltAxisVal;
 }
 
@@ -214,28 +254,40 @@ float fltPrecisionBreakaway (float fltAxisVal, int intSlope, float intBreak)
 // **************************************************************************** \\
 //{  <-- CORRUPTION: UNEXPLAINED COMMENTED LINE
 {
-  if (fltAxisVal > 512)
+  if (booTuner == true)
   {
-    if (fltAxisVal < (1024 - intBreak))
-    {
-      fltAxisVal = (((fltAxisVal - 512) / intSlope) + 512);
-    }
-    else
-    {
-      fltAxisVal = 1024;
-    }
-  }
-  else //if (fltAxisVal < 512)
+      Serial.print("  BREAKAWAY: BreakDistance: ");
+      Serial.print(512 - intBreak - abs(fltAxisVal));
+  }    
+
+  if (abs(fltAxisVal) > (512 - intBreak))
   {
-    if (fltAxisVal > (1024 - (1024 - intBreak)))
+    fltAxisVal = ((abs(fltAxisVal) / fltAxisVal) * 512);
+    
+    if (booTuner == true)
     {
-      fltAxisVal = (((fltAxisVal - 512) / intSlope) + 512);
+      Serial.print(" BRK ");
     }
-    else
-    {
-      fltAxisVal = 0;
-    }
+    
   }
+  else
+  {
+    fltAxisVal = (fltAxisVal / intSlope);
+    
+    if (booTuner == true)
+    {
+      Serial.print(" --- ");
+    }
+    
+  }
+  
+  if (booTuner == true)
+  {
+      Serial.print(" Reporting: ");
+      Serial.print(fltAxisVal);
+      Serial.println();
+  }
+  
   return fltAxisVal;
 }
 
@@ -244,11 +296,40 @@ float fltDeadZoneCheck (float fltAxisVal, int intDead)
 //  If the value isn't far enough away from the deadzone, then set
 //  the position to absolute center.
 {
-  if ((fltAxisVal >= 512 - intDead) && (fltAxisVal <= 512 + intDead))
+  //Serial.print(abs(intDead));
+  //Serial.print("  ABSVal = ");
+  //Serial.print(abs(fltAxisVal));
+  //Serial.print("  Val =  ");
+  //Serial.print(fltAxisVal);  // testing values
+  
+  if (abs(fltAxisVal) < intDead)
   {
-    fltAxisVal = 512;
+    fltAxisVal = 0;
+    if (booTuner == true)
+    {
+      Serial.print("    DEADZONE: Reporting: ZERO Set");
+      Serial.println();
+    }
   }
+  else if (booTuner == true)
+  { 
+    Serial.print("    DEADZONE: Reporting: ");
+    Serial.print(fltAxisVal);
+    Serial.println();
+  }
+  
+  //Serial.print("  Ret = ");
+  //Serial.print(fltAxisVal);
+  //Serial.println();
+  
   return fltAxisVal;
+}
+
+
+float flt512Center (float fltVal)
+//  Adjust -512-512 0 center value to 512 center. Range unchecked.
+{
+  return fltVal + 512;
 }
 
 
@@ -256,7 +337,7 @@ void setup()
 {
   // put your setup code here, to run once:
 
-  if (booTest == true)
+  if ((booTest == true) || (booTuner == true))
   {
     Serial.begin(9600);
   }
@@ -354,6 +435,10 @@ void loop()
     fltAxisX = fltDeadZoneCheck(fltAxisX, intDeadZone);
     fltAxisY = fltDeadZoneCheck(fltAxisY, intDeadZone);
 
+    // Reset to 512 Center before updates sent.
+    fltAxisX = flt512Center(fltAxisX);
+    fltAxisY = flt512Center(fltAxisY);
+
     // Execution and Send Updates only when value is changed ---
     // Considering, we are now getting to the point where external code is called,
     // I am not going to sub container the next portion of the code.  Real programmers
@@ -403,24 +488,26 @@ void loop()
     // Testing Output
     if (booTest == true)
     {
-      Serial.print("    X = ");
+      Serial.println();
+      Serial.print("DEBUG:");
+      Serial.println();
+      Serial.print("    raw X: ");
       Serial.print(fltTestAxisX);
-      Serial.print("     Y = ");
+      Serial.print("        raw Y: ");
       Serial.print(fltTestAxisY);
       Serial.println();
-      Serial.print("Joy X = ");
+      Serial.print("Sending X: ");
       Serial.print(fltAxisX);
-      Serial.print(" Joy Y = ");
+      Serial.print(" Sending Y: ");
       Serial.print(fltAxisY);
       Serial.println();
       Serial.println();
-      Serial.println();
-      Serial.println();
+
       // Serial.print(27,BYTE); // clear screen - Not sure how to print escape sequences.
     }
 
     // Slow delay if in testing mode.
-    if (booTest == true)
+    if ((booTest == true) || (booTuner == true))
     {
       intRestTime = 250;
     }
