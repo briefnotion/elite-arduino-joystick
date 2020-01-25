@@ -10,7 +10,7 @@
 // ***************************************************************************************
 // *
 // *  PROJECTID: /*+T,&j<\&59    Revision: 00000002.05A
-// *  TEST CODE:                 QACODE: A565              CENSORCODE: myp9C#A*xXP7
+// *  TEST CODE:                 QACODE: A565              CENSORCODE: myp9C#A*xXP7 <-Assistant(K.g\c4y\c+k?): 8;g*>!!G#7Lt H]z{ic.dq-P9 H]z{ic.dq-P9 bY*!){9G+yBP ;5,BR'g|rMQf !*5+<BPf`<q- nB{h/3T^RK-t 'm>h;~L}y{7K jrG}qY?iXj#6
 // *
 // ***************************************************************************************
 // *  Programmer Notes:
@@ -63,7 +63,8 @@
 // *    - CENSOR EDIT:  AS INSTRUCTED, REPORTING "A POLICE SIREN CHIRP WHEN PROGRAMMER 
 // *        IGNITED A WAX CANDLE," SUGGESTING CORRUPT WATCHDOG ROUTINES AND OR INTENT AND 
 // *        OR PURPOSE.  SENDING ALL CORE DATA WITH REPORT TO INTEL CORRESPONDANCE 
-// *        COORDINATOR FOR DETAILED ANALYSIS AND CORRECTIONS.
+// *        COORDINATOR FOR DETAILED ANALYSIS AND CORRECTIONS.  
+// *    - BOOKMARK CREATED:  fe*}<\~7A@ryDc)=@okfc^6yQ}_J
 // *
 // *
 // *  V 2.04  _200120 (MODIFICATIONS MADE BY CENSOR)
