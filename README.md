@@ -1,4 +1,4 @@
-# Elite Arduino Joystick
+# Arduino USB Joystick Thrust Controller for Elite Dangerous
 Analog joystick thruster control code for Aurduino Micro or Leonardo.
 
 Purpose:
