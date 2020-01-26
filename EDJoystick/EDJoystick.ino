@@ -6,11 +6,11 @@
 // *    Department : (R+D)^2
 // *       Sub Dept: Programming
 // *    Location ID: 856-45B
-// *                                                            (c) 2856 Core Dynamics
+// *                                                      (c) 2856 - 2857 Core Dynamics
 // ***************************************************************************************
 // *
 // *  PROJECTID: /*+T,&j<\&59    Revision: 00000002.05A
-// *  TEST CODE:                 QACODE: A565              CENSORCODE: myp9C#A*xXP7 <-Assistant(K.g\c4y\c+k?): 8;g*>!!G#7Lt H]z{ic.dq-P9 H]z{ic.dq-P9 bY*!){9G+yBP ;5,BR'g|rMQf !*5+<BPf`<q- nB{h/3T^RK-t 'm>h;~L}y{7K jrG}qY?iXj#6
+// *  TEST CODE:                 QACODE: A565              CENSORCODE: myp9C#A*xXP7
 // *
 // ***************************************************************************************
 // *  Programmer Notes:
@@ -46,6 +46,29 @@
 // *
 // ***************************************************************************************
 // *
+// *  V 2.06 _200126
+// *    "Manipulate him to gain his trust."  Oxymoron, moronic, and moron is what this  
+// *    says.  But, we will get back to this, later.  Right now there is more brass
+// *    floating around the office than I am comfortable with.  From both the Federation
+// *    and Empire.
+// *    I used this opportunity to talk to the test pilot.  Couldn't understand why
+// *    someone who is in the void more than I am in a cabin, could be so shy, so I
+// *    looked into it.  Personel Officer outranks me by a mile, but, I know he has debt.
+// *    I pressured him to disclose her file.  He was pissed but did so by standard outing
+// *    her file to voice.  At first I was shocked then later bored.  I sat and listened
+// *    for nearly an hour as it constantly rambled off every single detail of every 
+// *    mission she has ever flown.  She is military with histories of combat, 
+// *    negotiations, rescue, relief, diplomacy, development, and so much more that I
+// *    both understood and couln't.  Too much.  She isn't shy, she is guarded.  I letft.
+// *    The bastard SO didn't set up a way to stop the playback.  I didn't even get
+// *    through a decade of her history.
+// *    Back to the brass, writing this is what they wanted.  "Nobody can see comments,"
+// *    I said.  Death stares is all I got.  Will comply.
+// *
+// *    - Second Slope added.
+// *    - Ploperly defining joystick construct.
+// *
+// *
 // *  V 2.05  _200124
 // *    OK.  Boss calls me into the office.  Offers me some sweet brandy.  Tells me to 
 // *    improve this program.  Thats it.  What the hell?  This program was scrap.  
@@ -60,19 +83,10 @@
 // *      This will allow me to fine tune the lower joystick positions more accurately.
 // *    - Created a "booTuner" variable that helps me figure out what tuning, 
 // *      breakaway, and deadzone values to use.  
-// *    - CENSOR EDIT:  AS INSTRUCTED, REPORTING "A POLICE SIREN CHIRP WHEN PROGRAMMER 
-// *        IGNITED A WAX CANDLE," SUGGESTING CORRUPT WATCHDOG ROUTINES AND OR INTENT AND 
-// *        OR PURPOSE.  SENDING ALL CORE DATA WITH REPORT TO INTEL CORRESPONDANCE 
-// *        COORDINATOR FOR DETAILED ANALYSIS AND CORRECTIONS.  
 // *    - BOOKMARK CREATED:  fe*}<\~7A@ryDc)=@okfc^6yQ}_J
 // *
 // *
 // *  V 2.04  _200120 (MODIFICATIONS MADE BY CENSOR)
-// *    - ILLEGAL ACCESS DETECTED.  MULTIPLE ANONYMOUS ATTEMPTS TO OBTAIN ORIGINAL CODE
-// *        DETECTED.  WATCHDOG ROUTINES INITIATED.  ACCESS TO ASSOCIATED SYSTEMS
-// *        ELEVATED.  WATCHLIST CREATED.
-// *    - COMPILER CORRUPTION DETECTED.  CHANGES TO CODE MADE TO ACCOMIDATE CHANGES IN
-// *        COMPILER.
 // *    - RESORT PROCEDURES: SUPPORT PROCEDURES AS TOP.  SETUP PROCEDURES AS MID.  MAIN
 // *        PROCEDURES AS LAST.
 // *    - CHANGED SEVERAL VARIABLE NAMES.
@@ -113,8 +127,25 @@
 // ***************************************************************************************
 
 #include "Joystick.h"
-Joystick_ Joystick;
-
+Joystick_ Joystick
+  (
+    JOYSTICK_DEFAULT_REPORT_ID,   // default uint8_t hidReportId. Do not use 0x01 or 0x02
+    JOYSTICK_TYPE_JOYSTICK,   // options: JOYSTICK_TYPE_JOYSTICK, JOYSTICK_TYPE_GAMEPAD, JOYSTICK_TYPE_MULTI_AXIS
+    1,    // uint8_t buttonCount - button count
+    0, // uint8_t hatSwitchCount
+    true, // bool includeXAxis
+    true, // bool includeYAxis
+    false, // bool includeZAxis
+    false, // bool includeRxAxis
+    false, // bool includeRyAxis
+    false,    // bool includeRzAxis
+    false, // bool includeRudder
+    false, // bool includeThrottle
+    false, // bool includeAccelerator
+    false, // bool includeBrake
+    false // bool includeSteering
+  );
+  
 // --- Current Pin Layout ---
 // PIN 6   - Joystick Button
 // PIN A0  - X axis
@@ -123,6 +154,18 @@ Joystick_ Joystick;
 // PIN 3.5 - Joystick Power
 
 // --- Setup ---
+
+// Enable Serial Monitor for testing
+//    Enabling booTest will slow the board time and enable the serial monitor to be read.
+const boolean booTest = false;
+//    Enabling booTuner will enable serial moniter to display tuning information
+const boolean booTuner = false;
+//  Testing Data Collection
+//  These two variables are kind of stupid.  Why cant I conditionally scope local variables at compile time.
+//  Better to assign them here and not use them, than to create and destroy them with every cycle.
+int fltTestAxisX = 0;
+int fltTestAxisY = 0;
+
 
 // Voltage
 //    Are you powering the joystick with the 5V pin or the 3.5V pin?  Pick one or the other (HARDWARE HACK)
@@ -147,7 +190,7 @@ const int intXtune = 3;
 const int intYtune = 10;
 const int intDeadZone = 2 ;   // Reintroducing deadzones
 
-// Precision slope and Breakaway Point
+// Precision slope, controlled slope, and Breakaway Point
 //    Not sure how to explain this except by example.  If joystick is at halfway point of uppermost and mid position and
 //    slope is 2 or (1/2), then the joystick position will be reported as at the 1/4 point of uppermost and mid position.
 //    Also, if breakpoint is either max(1024 - intBreakTune) or min (0 + intBreakTune) away from the joysticks upper
@@ -155,19 +198,11 @@ const int intDeadZone = 2 ;   // Reintroducing deadzones
 //      Note: These are thruster controls.  I need either precision or full on.
 // Slope is rep by 1/#.  eg, Slope 2 = 1/2 = .5, 4 = .25, ...
 // Break point . 9 represents 90%
-const int intSlopeTune = 2;
+const int intSlopeTune1 = 4;
+const int intSlopeBreak1 = int(512/2);
+const int intSlopeTune2 = 2;
 const int intBreakTune = 12;
 
-// Enable Serial Monitor for testing
-//    Enabling booTest will slow the board time and enable the serial monitor to be read.
-const boolean booTest = false;
-//    Enabling booTuner will enable serial moniter to display tuning information
-const boolean booTuner = false;
-//  Testing Data Collection
-//  These two variables are kind of stupid.  Why cant I conditionally scope local variables at compile time.
-//  Better to assign them here and not use them, than to create and destroy them with every cycle.
-int fltTestAxisX = 0;
-int fltTestAxisY = 0;
 
 // Adjust joystick end to end limits value.
 // doesn't work yet and never finished.
@@ -200,6 +235,11 @@ float fltAxisXPrev = 0;
 float fltAxisYPrev = 0;
 boolean booUpdate = false;
 
+
+float sign(float fltX)
+{
+  return (fltX / abs(fltX));
+}
 
 float fltJoyTuneInverse (float fltAxisVal, int intTune, boolean booInverse)
 //  This function will clean the newly read joystick value by adjusting its passed tune
@@ -234,7 +274,7 @@ float fltJoyTuneInverse (float fltAxisVal, int intTune, boolean booInverse)
 }
 
 
-float fltPrecisionBreakaway (float fltAxisVal, int intSlope, float intBreak)
+float fltPrecisionBreakaway (float fltAxisVal, int intSlope1, int intBreak1, int intSlope2, float intBreakA)
 //  Now that we have a valid position of the joystick, we need to define its behavior.
 //  Precision is defined before the breakaway point by the Slope Value, then
 //  Breaks away at the BreakTune value.
@@ -253,42 +293,49 @@ float fltPrecisionBreakaway (float fltAxisVal, int intSlope, float intBreak)
 // *   FOLLOWS:                                                                 \\
 // *      "12 lines were removed."                                              \\
 // **************************************************************************** \\
-//{  <-- CORRUPTION: UNEXPLAINED COMMENTED LINE
+
 {
   if (booTuner == true)
   {
       Serial.print("  BREAKAWAY: BreakDistance: ");
-      Serial.print(512 - intBreak - abs(fltAxisVal));
+      Serial.print(512 - intBreakA - abs(fltAxisVal));
   }    
 
-  if (abs(fltAxisVal) > (512 - intBreak))
+  if ((abs(fltAxisVal) >= 0) && (abs(fltAxisVal)) < intBreak1)
   {
-    fltAxisVal = ((abs(fltAxisVal) / fltAxisVal) * 512);
-    
-    if (booTuner == true)
+    // Slope 1
+    fltAxisVal = (fltAxisVal / intSlope1);
+
+
+      if (booTuner == true)
     {
-      Serial.print(" BRK ");
+      Serial.print(" SL1 ");
+      Serial.println();
     }
-    
+  }
+  else if ((abs(fltAxisVal) >= intBreak1) && (abs(fltAxisVal) < 512 - intBreakA))
+  {
+    // Slope 2
+    fltAxisVal = (((fltAxisVal) / intSlope2) - (sign(fltAxisVal) * (intBreak1 / intSlope1)));
+
+      if (booTuner == true)
+    {
+      Serial.print(" SL2 ");
+      Serial.println();
+    }
   }
   else
   {
-    fltAxisVal = (fltAxisVal / intSlope);
-    
-    if (booTuner == true)
+    // Break Away
+    fltAxisVal = (sign(fltAxisVal) * 512);
+
+     if (booTuner == true)
     {
-      Serial.print(" --- ");
-    }
-    
-  }
-  
-  if (booTuner == true)
-  {
-      Serial.print(" Reporting: ");
-      Serial.print(fltAxisVal);
+      Serial.print(" BRK ");
       Serial.println();
+    }
   }
-  
+
   return fltAxisVal;
 }
 
@@ -429,8 +476,8 @@ void loop()
 
     // Post Processing
     // Precision and Breakaway.
-    fltAxisX = fltPrecisionBreakaway (fltAxisX, intSlopeTune, intBreakTune);
-    fltAxisY = fltPrecisionBreakaway (fltAxisY, intSlopeTune, intBreakTune);
+    fltAxisX = fltPrecisionBreakaway (fltAxisX, intSlopeTune1, intSlopeBreak1, intSlopeTune2, intBreakTune);
+    fltAxisY = fltPrecisionBreakaway (fltAxisY, intSlopeTune1, intSlopeBreak1, intSlopeTune2, intBreakTune);
 
     // Deadzone Check
     fltAxisX = fltDeadZoneCheck(fltAxisX, intDeadZone);
