@@ -46,8 +46,14 @@
 // *
 // ***************************************************************************************
 // *
+// *  V 2.06  _200127
+// *    - A division by zero error was allowed in the newly created sign(float fltX)
+// *      function.  It never was triggered but patched it regardless.
+// *    - Created selftuner to run on start.
+// *
+// *
 // *  V 2.06 _200126
-// *    "Manipulate him to gain his trust."  Oxymoron, moronic, and moron is what this  
+// *    "Manipulate him to gain his trust."  Oxymoron, moronic, and moron is what this
 // *    says.  But, we will get back to this, later.  Right now there is more brass
 // *    floating around the office than I am comfortable with.  From both the Federation
 // *    and Empire.
@@ -56,8 +62,8 @@
 // *    looked into it.  Personel Officer outranks me by a mile, but, I know he has debt.
 // *    I pressured him to disclose her file.  He was pissed but did so by standard outing
 // *    her file to voice.  At first I was shocked then later bored.  I sat and listened
-// *    for nearly an hour as it constantly rambled off every single detail of every 
-// *    mission she has ever flown.  She is military with histories of combat, 
+// *    for nearly an hour as it constantly rambled off every single detail of every
+// *    mission she has ever flown.  She is military with histories of combat,
 // *    negotiations, rescue, relief, diplomacy, development, and so much more that I
 // *    both understood and couln't.  Too much.  She isn't shy, she is guarded.  I letft.
 // *    The bastard SO didn't set up a way to stop the playback.  I didn't even get
@@ -67,22 +73,23 @@
 // *
 // *    - Second Slope added.
 // *    - Ploperly defining joystick construct.
+// *    - Moved the tmeCurrentMillis variable into the main scope.
 // *
 // *
 // *  V 2.05  _200124
-// *    OK.  Boss calls me into the office.  Offers me some sweet brandy.  Tells me to 
-// *    improve this program.  Thats it.  What the hell?  This program was scrap.  
-// *    I see the censor made changes to it, but its not too difficult to see what 
+// *    OK.  Boss calls me into the office.  Offers me some sweet brandy.  Tells me to
+// *    improve this program.  Thats it.  What the hell?  This program was scrap.
+// *    I see the censor made changes to it, but its not too difficult to see what
 // *    she/he/it did.  Except, it would be cool if the comments werentn't left out of its
 // *    edits.  Also, I see no, 0000, nothing, zero, nada, pull request for this routine
 // *    So, again, what the hell?
-// *  
+// *
 // *    - changing joy memory position from range of 0 to 1024 and a center of 512, to
 // *      range of -512 to 512 with 0 center, to make calculations to joy position easier.
-// *    - changed a few functions to allow me to create a second slope in the future.  
+// *    - changed a few functions to allow me to create a second slope in the future.
 // *      This will allow me to fine tune the lower joystick positions more accurately.
-// *    - Created a "booTuner" variable that helps me figure out what tuning, 
-// *      breakaway, and deadzone values to use.  
+// *    - Created a "booTuner" variable that helps me figure out what tuning,
+// *      breakaway, and deadzone values to use.
 // *    - BOOKMARK CREATED:  fe*}<\~7A@ryDc)=@okfc^6yQ}_J
 // *
 // *
@@ -128,24 +135,24 @@
 
 #include "Joystick.h"
 Joystick_ Joystick
-  (
-    JOYSTICK_DEFAULT_REPORT_ID,   // default uint8_t hidReportId. Do not use 0x01 or 0x02
-    JOYSTICK_TYPE_JOYSTICK,   // options: JOYSTICK_TYPE_JOYSTICK, JOYSTICK_TYPE_GAMEPAD, JOYSTICK_TYPE_MULTI_AXIS
-    1,    // uint8_t buttonCount - button count
-    0, // uint8_t hatSwitchCount
-    true, // bool includeXAxis
-    true, // bool includeYAxis
-    false, // bool includeZAxis
-    false, // bool includeRxAxis
-    false, // bool includeRyAxis
-    false,    // bool includeRzAxis
-    false, // bool includeRudder
-    false, // bool includeThrottle
-    false, // bool includeAccelerator
-    false, // bool includeBrake
-    false // bool includeSteering
-  );
-  
+(
+  JOYSTICK_DEFAULT_REPORT_ID,   // default uint8_t hidReportId. Do not use 0x01 or 0x02
+  JOYSTICK_TYPE_JOYSTICK,   // options: JOYSTICK_TYPE_JOYSTICK, JOYSTICK_TYPE_GAMEPAD, JOYSTICK_TYPE_MULTI_AXIS
+  1,    // uint8_t buttonCount - button count
+  0, // uint8_t hatSwitchCount
+  true, // bool includeXAxis
+  true, // bool includeYAxis
+  false, // bool includeZAxis
+  false, // bool includeRxAxis
+  false, // bool includeRyAxis
+  false,    // bool includeRzAxis
+  false, // bool includeRudder
+  false, // bool includeThrottle
+  false, // bool includeAccelerator
+  false, // bool includeBrake
+  false // bool includeSteering
+);
+
 // --- Current Pin Layout ---
 // PIN 6   - Joystick Button
 // PIN A0  - X axis
@@ -166,6 +173,8 @@ const boolean booTuner = false;
 int fltTestAxisX = 0;
 int fltTestAxisY = 0;
 
+//  Initialize with self tuner.
+boolean booSelfTunerRun = true;
 
 // Voltage
 //    Are you powering the joystick with the 5V pin or the 3.5V pin?  Pick one or the other (HARDWARE HACK)
@@ -186,9 +195,13 @@ const boolean booYInverse = true;
 //    midpoint with these values
 // In future, auto tune this on controller start based on first
 // first read position and distance from 512.
-const int intXtune = 3;
-const int intYtune = 10;
-const int intDeadZone = 2 ;   // Reintroducing deadzones
+int intXtune = 0;
+int intYtune = 0;
+float fltXtuneMinError = 0;
+float fltYtuneMinError = 0;
+float fltXtuneMaxError = 0;
+float fltYtuneMaxError = 0;
+int intDeadZone = 0 ;   // Reintroducing deadzones
 
 // Precision slope, controlled slope, and Breakaway Point
 //    Not sure how to explain this except by example.  If joystick is at halfway point of uppermost and mid position and
@@ -199,7 +212,7 @@ const int intDeadZone = 2 ;   // Reintroducing deadzones
 // Slope is rep by 1/#.  eg, Slope 2 = 1/2 = .5, 4 = .25, ...
 // Break point . 9 represents 90%
 const int intSlopeTune1 = 4;
-const int intSlopeBreak1 = int(512/2);
+const int intSlopeBreak1 = int(512 / 2);
 const int intSlopeTune2 = 2;
 const int intBreakTune = 12;
 
@@ -211,6 +224,7 @@ const int intBreakTune = 12;
 // Delay less Loop Variables
 //    intRestTime defines the amount of time, in milliseconds, passed before another data read pass is performed
 //    and transmitted from the controller to the main system.
+unsigned long tmeCurrentMillis = millis();  // 1 Second = 1000 millis
 unsigned long tmePrevMillis = 0;
 int intRestTime = 46;        // Do not check for update until rest time is passed
 
@@ -236,9 +250,30 @@ float fltAxisYPrev = 0;
 boolean booUpdate = false;
 
 
+// Not going to use.
+//boolean booDebug(boolean booOn, char strOutput[], boolean booPrintLn)
+////  Debug output routin.
+//  if (booOn == true)
+//  {
+//    Serial.print(strOutput);
+//  }
+//  if (booPrintLn == true)
+//  {
+//    Serial.println();
+//  }
+//}
+
+
 float sign(float fltX)
 {
-  return (fltX / abs(fltX));
+  if (fltX == 0)
+  {
+    return 1;
+  }
+  else
+  {
+    return (fltX / abs(fltX));
+  }
 }
 
 float fltJoyTuneInverse (float fltAxisVal, int intTune, boolean booInverse)
@@ -250,13 +285,13 @@ float fltJoyTuneInverse (float fltAxisVal, int intTune, boolean booInverse)
 
   if (booTuner == true)
   {
-      Serial.print("TUNING: Suggested Tune Val : (+-)");
-      Serial.print(fltAxisVal);
+    Serial.print("TUNING: Suggested Tune Val : (+-)");
+    Serial.print(fltAxisVal);
   }
 
   if (booInverse == true)
   {
-    fltAxisVal = intTune - fltAxisVal;
+    fltAxisVal = 0 - intTune - fltAxisVal;
   }
   else
   {
@@ -265,11 +300,11 @@ float fltJoyTuneInverse (float fltAxisVal, int intTune, boolean booInverse)
 
   if (booTuner == true)
   {
-      Serial.print(" Reporting: ");
-      Serial.print(fltAxisVal);
-      Serial.println();
+    Serial.print(" Reporting: ");
+    Serial.print(fltAxisVal);
+    Serial.println();
   }
-  
+
   return fltAxisVal;
 }
 
@@ -297,9 +332,9 @@ float fltPrecisionBreakaway (float fltAxisVal, int intSlope1, int intBreak1, int
 {
   if (booTuner == true)
   {
-      Serial.print("  BREAKAWAY: BreakDistance: ");
-      Serial.print(512 - intBreakA - abs(fltAxisVal));
-  }    
+    Serial.print("  BREAKAWAY: BreakDistance: ");
+    Serial.print(512 - intBreakA - abs(fltAxisVal));
+  }
 
   if ((abs(fltAxisVal) >= 0) && (abs(fltAxisVal)) < intBreak1)
   {
@@ -307,7 +342,7 @@ float fltPrecisionBreakaway (float fltAxisVal, int intSlope1, int intBreak1, int
     fltAxisVal = (fltAxisVal / intSlope1);
 
 
-      if (booTuner == true)
+    if (booTuner == true)
     {
       Serial.print(" SL1 ");
       Serial.println();
@@ -318,7 +353,7 @@ float fltPrecisionBreakaway (float fltAxisVal, int intSlope1, int intBreak1, int
     // Slope 2
     fltAxisVal = (((fltAxisVal) / intSlope2) - (sign(fltAxisVal) * (intBreak1 / intSlope1)));
 
-      if (booTuner == true)
+    if (booTuner == true)
     {
       Serial.print(" SL2 ");
       Serial.println();
@@ -329,7 +364,7 @@ float fltPrecisionBreakaway (float fltAxisVal, int intSlope1, int intBreak1, int
     // Break Away
     fltAxisVal = (sign(fltAxisVal) * 512);
 
-     if (booTuner == true)
+    if (booTuner == true)
     {
       Serial.print(" BRK ");
       Serial.println();
@@ -349,27 +384,30 @@ float fltDeadZoneCheck (float fltAxisVal, int intDead)
   //Serial.print(abs(fltAxisVal));
   //Serial.print("  Val =  ");
   //Serial.print(fltAxisVal);  // testing values
-  
+
   if (abs(fltAxisVal) < intDead)
   {
     fltAxisVal = 0;
     if (booTuner == true)
     {
-      Serial.print("    DEADZONE: Reporting: ZERO Set");
+      Serial.print("    DEADZONE: Size: ");
+      Serial.print(intDeadZone);
+      Serial.print("  Reporting: ZERO Set");
       Serial.println();
     }
   }
   else if (booTuner == true)
-  { 
-    Serial.print("    DEADZONE: Reporting: ");
+  {
+    Serial.print("    DEADZONE: Size: ");
+    Serial.print(intDeadZone);
     Serial.print(fltAxisVal);
     Serial.println();
   }
-  
+
   //Serial.print("  Ret = ");
   //Serial.print(fltAxisVal);
   //Serial.println();
-  
+
   return fltAxisVal;
 }
 
@@ -378,6 +416,115 @@ float flt512Center (float fltVal)
 //  Adjust -512-512 0 center value to 512 center. Range unchecked.
 {
   return fltVal + 512;
+}
+
+
+boolean booSelfTuner (float fltX, float fltY)
+{
+  //  I discovered that changes in atmospheric pressures, gravity, humidity,
+  //  and temperature could and would change the tuning values, causing the
+  //  zero center to drift.  This routine will adjust the automaticlly on
+  //  start.
+
+  float fltXError = 0;
+  float fltYError = 0;
+
+  if (tmeCurrentMillis <= 3000)
+  {
+
+    fltXError = 512 - fltX;
+    fltYError = 512 - fltY;
+
+    if (fltXtuneMaxError == 0)
+    {
+      fltXtuneMaxError = fltXError;
+      fltXtuneMinError = fltXError;
+      fltYtuneMaxError = fltYError;
+      fltYtuneMinError = fltYError;
+    }
+
+    // X Test
+    if (fltXError > fltXtuneMaxError)
+    {
+      fltXtuneMaxError = fltXError;
+    }
+
+    if (fltXError < fltXtuneMinError)
+    {
+      fltXtuneMinError = fltXError;
+    }
+
+    // Y Test
+    if (fltYError > fltYtuneMaxError)
+    {
+      fltYtuneMaxError = fltYError;
+    }
+
+    if (fltYError < fltYtuneMinError)
+    {
+      fltYtuneMinError = fltYError;
+    }
+
+    // Set Tunes
+    intXtune = int(fltXtuneMinError + ((fltXtuneMaxError - fltXtuneMinError) / 2));
+    intYtune = int(fltYtuneMinError + ((fltYtuneMaxError - fltYtuneMinError) / 2));
+
+    // Set DeadZone
+    if ((fltXtuneMaxError - fltXtuneMinError) > intDeadZone)
+    {
+      intDeadZone = fltXtuneMaxError - fltXtuneMinError + 1;
+    }
+    if ((fltYtuneMaxError - fltYtuneMinError) > intDeadZone)
+    {
+      intDeadZone = fltYtuneMaxError - fltYtuneMinError + 1;
+    }
+
+    // Output
+    if (booTuner == true)
+    {
+      Serial.println();
+      Serial.print("Self Tuning:  ");
+      Serial.println();
+
+      Serial.print("  X: ");
+      Serial.print(fltX);
+      Serial.print("   Error: ");
+      Serial.print(fltXError);
+      Serial.print("   Min: ");
+      Serial.print(fltXtuneMinError);
+      Serial.print("   Max: ");
+      Serial.print(fltXtuneMaxError);
+      Serial.print("   XTune: ");
+      Serial.print(intXtune);
+      Serial.println();
+
+      Serial.print("  Y: ");
+      Serial.print(fltY);
+      Serial.print("   Error: ");
+      Serial.print(fltYError);
+      Serial.print("   Min: ");
+      Serial.print(fltYtuneMinError);
+      Serial.print("   Max: ");
+      Serial.print(fltYtuneMaxError);
+      Serial.print("   YTune: ");
+      Serial.print(intYtune);
+      Serial.println();
+
+      Serial.println();
+    }
+
+    return true;
+  }
+  else
+  {
+    if (booTuner == true)
+    {
+      Serial.print("Exiting Self Tuning");
+      Serial.println();
+      Serial.println();
+    }
+    return false;
+  }
 }
 
 
@@ -416,33 +563,13 @@ void setup()
 
 void loop()
 {
-  //  I like the idea of blinking lights, but it would require more coding to make it valuable.
-  //
-  //  // check to see if it's time to blink the LED; that is, if the difference
-  //  // between the current time and last time you blinked the LED is bigger than
-  //  // the interval at which you want to blink the LED.
-  unsigned long currentMillis = millis();
-  //
-  //  if (currentMillis - previousMillis >= interval)
-  //  {
-  //    // save the last time you blinked the LED
-  //    previousMillis = currentMillis;
-  //
-  //    // if the LED is off turn it on and vice-versa:
-  //    if (ledState == LOW) {
-  //      ledState = HIGH;
-  //    } else {
-  //      ledState = LOW;
-  //    }
-  //  }
-  //
-  //  // set the LED with the ledState of the variable:
-  //  digitalWrite(ledPin, ledState);
+  tmeCurrentMillis = millis();
 
   // Begin of Delay less Loop
-  if (currentMillis - tmePrevMillis >= intRestTime)
+  if (tmeCurrentMillis - tmePrevMillis >= intRestTime)
   {
-    tmePrevMillis = currentMillis;
+    tmePrevMillis = tmeCurrentMillis;
+
     // Grabbing Data ---
 
     int button0Val = digitalRead(6);
@@ -469,6 +596,12 @@ void loop()
     // should I float these?  Yeah, why not.
     float fltAxisX = int(floVOffset * xAxis);
     float fltAxisY = int(floVOffset * yAxis);
+
+    //  Check Tuner to see if it needs to run.
+    if (booSelfTunerRun == true)
+    {
+      booSelfTunerRun = booSelfTuner(fltAxisX, fltAxisY);
+    }
 
     // Inversion with Tuning
     fltAxisX = fltJoyTuneInverse (fltAxisX, intXtune, booXInverse);
