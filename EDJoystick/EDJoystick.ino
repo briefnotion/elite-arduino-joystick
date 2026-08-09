@@ -8,11 +8,33 @@
 // * Location ID: 856-45B
 // * (c) 2856 - 2857 Core Dynamics
 // ***************************************************************************************
-// * PROJECTID: /*+T,&j<\&59    Revision: 00000002.08A
+// * PROJECTID: /*+T,&j<\&59    Revision: 00000002.12A
 // *
 // * Dependencies:
 // * - Joystick.h (V2.0) by Matthew Heironimus
 // * Source: https://github.com/MHeironimus/ArduinoJoystickLibrary
+// *
+// * Rev 00000002.12A
+// *   - Fixed: holding the stick steadily off-center could get adopted as
+// *     the new center by periodic recalibration, since "idle" only checked
+// *     for no change, not nearness to center. Recalibration now also
+// *     requires the stick to be resting within RECALIBRATION_CENTER_TOLERANCE
+// *     deadzone-widths of center.
+// *
+// * Rev 00000002.11A
+// *   - Added VIEW_DATA debug toggle: prints live axis/deadzone/button
+// *     values plus calibration results to Serial when enabled.
+// *
+// * Rev 00000002.10A
+// *   - Deadzone is now self-tuning: grows instantly on new jitter, eases
+// *     down gradually otherwise, floored at DEADZONE_MINIMUM. Combines
+// *     with periodic recalibration to shrink the deadzone over time on
+// *     cheap/high-tolerance sticks without reintroducing drift.
+// *
+// * Rev 00000002.09A
+// *   - Added periodic recalibration: the controller will now recenter
+// *     itself while idle (see ENABLE_PERIODIC_RECALIBRATION) instead of
+// *     only calibrating once at boot.
 // *
 // * Rev 00000002.08A
 // *   - Readability pass: user-configurable values collected into one block up
@@ -66,9 +88,49 @@ const int  EDGE_SNAP_MARGIN = 12;
 //        halves both axes' output for finer control (see loop() step 5).
 const bool BUTTON_TOGGLES_HALF_PRECISION = false;
 
+// --- Deadzone Self-Tuning ---
+// Cheap sticks can have a lot of center jitter, so the deadzone is measured
+// during calibration rather than fixed. It grows immediately if a
+// calibration observes more jitter than it currently covers (drift safety
+// first), but only eases downward gradually across repeated calibrations -
+// see calibrateCenter() - so a single unusually quiet sample window can't
+// snap it too tight. Higher DEADZONE_SHRINK_DIVISOR = more cautious/slower
+// shrinking.
+const int DEADZONE_SHRINK_DIVISOR = 4;
+const int DEADZONE_MINIMUM        = 2;
+
 // --- Timing ---
 // Delay (ms) between read/report cycles, and between calibration samples at boot.
 const int LOOP_INTERVAL_MS = 15;
+
+// --- Debug Output ---
+// When true, prints the live raw/processed axis values, deadzone, button
+// state, and calibration results to Serial once per loop, so you can watch
+// what the controller is doing (e.g. in the Arduino IDE's Serial Monitor).
+// Flip back to false once you're happy with the tuning - no need to remove
+// the code.
+const bool VIEW_DATA      = false;
+const long VIEW_DATA_BAUD = 115200;
+
+// --- Periodic Recalibration ---
+// The initial boot-time calibration can go stale (temperature, humidity, the
+// stick just settling with use). When enabled, the controller will quietly
+// recenter itself using the same logic as the boot calibration, but only
+// while the stick is idle - never while it's actively being moved.
+const bool ENABLE_PERIODIC_RECALIBRATION = true;
+
+// How long the reported position must go unchanged before the stick is
+// considered "at rest" and eligible for recalibration.
+const unsigned long RECALIBRATION_IDLE_MS = 3000UL;       // 3 seconds
+
+// Minimum time between recalibrations, even if idle the whole time.
+const unsigned long RECALIBRATION_INTERVAL_MS = 300000UL; // 5 minutes
+
+// A calibration is skipped if the stick is currently resting more than this
+// many deadzone-widths away from center - e.g. held off to one side and left
+// there. Without this, "unchanged for RECALIBRATION_IDLE_MS" alone can't
+// tell "parked off-center" apart from "genuinely at rest."
+const int RECALIBRATION_CENTER_TOLERANCE = 2; // e.g. 2 = must be within 2x deadZone of center
 
 /* =========================================================================
    Joystick Device
@@ -95,8 +157,9 @@ Joystick_ Joystick(
 int xCenterOffset = 0;
 int yCenterOffset = 0;
 
-// Deadzone radius; starts at a small fallback and is replaced by
-// calibrateCenter() with a value sized to the stick's observed rest jitter.
+// Deadzone radius; starts at a small fallback and is self-tuned by
+// calibrateCenter() to the smallest value that still covers the stick's
+// observed rest jitter (see DEADZONE_SHRINK_DIVISOR).
 int deadZone = 5;
 
 // 3-sample rolling average buffers, indexed by sampleIndex (see readSmoothed).
@@ -116,6 +179,14 @@ bool halfPrecisionActive = false;
 // Status LED animation phase: 0 = idle/steady, 2 = settle-back-to-steady is
 // due next frame. See loop() step 6 for the full explanation.
 int ledPhase = 0;
+
+// Timestamps used to decide when it's safe to recalibrate (see loop() step 11).
+unsigned long lastMovementMillis    = 0;
+unsigned long lastCalibrationMillis = 0;
+
+// Tracks whether we've already printed a "skipped, off-center" debug line
+// for the current idle stretch, so it logs once instead of every frame.
+bool recalSkipAnnounced = false;
 
 /* =========================================================================
    Helpers
@@ -173,9 +244,12 @@ float applyLinear(float val) {
   return val / LINEAR_SCALE;
 }
 
-// Samples both axes for a short window at boot to find their true center and
-// how much they drift/jitter while at rest, so the deadzone can absorb that.
-void calibrateCenter() {
+// Samples both axes for a short window to find their true center and how
+// much they drift/jitter while at rest, so the deadzone can absorb that.
+// `reason` is just a label for the VIEW_DATA log (e.g. "BOOT" or "IDLE").
+void calibrateCenter(const char* reason) {
+  int previousDeadZone = deadZone;
+
   float xMin = 9999, xMax = -9999;
   float yMin = 9999, yMax = -9999;
 
@@ -193,7 +267,37 @@ void calibrateCenter() {
 
   xCenterOffset = (xMin + xMax) / 2;
   yCenterOffset = (yMin + yMax) / 2;
-  deadZone = max(xMax - xMin, yMax - yMin) + 2;
+
+  int observedJitter = (int)(max(xMax - xMin, yMax - yMin)) + 2;
+
+  if (observedJitter > deadZone) {
+    // Worse jitter than we've been covering - adopt it right away.
+    deadZone = observedJitter;
+  } else {
+    // Quieter than before - ease toward it instead of snapping down, so one
+    // lucky quiet sample window can't make the deadzone too tight.
+    int step = (deadZone - observedJitter) / DEADZONE_SHRINK_DIVISOR;
+    if (step < 1) step = 1;
+    deadZone -= step;
+    if (deadZone < observedJitter) deadZone = observedJitter;
+  }
+
+  if (deadZone < DEADZONE_MINIMUM) {
+    deadZone = DEADZONE_MINIMUM;
+  }
+
+  if (VIEW_DATA) {
+    Serial.print(F("[CALIBRATE:"));
+    Serial.print(reason);
+    Serial.print(F("] xOffset="));
+    Serial.print(xCenterOffset);
+    Serial.print(F(" yOffset="));
+    Serial.print(yCenterOffset);
+    Serial.print(F(" deadZone="));
+    Serial.print(previousDeadZone);
+    Serial.print(F(" -> "));
+    Serial.println(deadZone);
+  }
 }
 
 /* =========================================================================
@@ -201,6 +305,17 @@ void calibrateCenter() {
    ========================================================================= */
 
 void setup() {
+  if (VIEW_DATA) {
+    Serial.begin(VIEW_DATA_BAUD);
+    // Give the Serial Monitor a few seconds to connect so the boot
+    // calibration line below isn't lost. Bounded, so normal use (and any
+    // run without a monitor attached) is never held up for long.
+    unsigned long serialWaitStart = millis();
+    while (!Serial && (millis() - serialWaitStart) < 3000UL) {
+      ; // waiting for the host to open the port
+    }
+  }
+
   Joystick.begin(false);  // manual sendState() - only transmit on real changes
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(PIN_STATUS_LED, OUTPUT);
@@ -209,7 +324,7 @@ void setup() {
   Joystick.setYAxis(512);
   Joystick.sendState();
 
-  calibrateCenter();
+  calibrateCenter("BOOT");
 
   // Prime the rolling-average buffers so the first loop() reads aren't
   // skewed toward zero by empty buffer slots.
@@ -219,6 +334,9 @@ void setup() {
     sampleIndex = (sampleIndex + 1) % 3;
     delay(LOOP_INTERVAL_MS);
   }
+
+  lastMovementMillis    = millis();
+  lastCalibrationMillis = millis();
 }
 
 void loop() {
@@ -232,6 +350,11 @@ void loop() {
   float y = rawY - 512 + yCenterOffset;
   if (INVERT_X) x = -x;
   if (INVERT_Y) y = -y;
+
+  // Raw offset from center, before the deadzone zeroes small values out -
+  // kept around for the recalibration center-check in step 11.
+  float centeredX = x;
+  float centeredY = y;
 
   // 3. Deadzone: snap small jitter around center to exactly zero.
   if (abs(x) < deadZone) x = 0;
@@ -299,6 +422,66 @@ void loop() {
   } else if (ledPhase == 2) {
     digitalWrite(PIN_STATUS_LED, halfPrecisionActive ? HIGH : LOW);
     ledPhase = 0;
+  }
+
+  // 11. Periodic recalibration: track how long it's been since anything
+  //     changed (axis or button). If the stick has sat idle long enough,
+  //     and enough time has passed since the last calibration, recenter.
+  //     "Idle" is judged by the report going unchanged, not by it reading
+  //     exactly center - that way a stick that has drifted off center while
+  //     genuinely at rest can still be caught and corrected.
+  if (changed) {
+    lastMovementMillis = millis();
+    recalSkipAnnounced = false;
+  }
+
+  if (ENABLE_PERIODIC_RECALIBRATION) {
+    unsigned long idleFor = millis() - lastMovementMillis;
+    unsigned long sinceLastCalibration = millis() - lastCalibrationMillis;
+
+    if (idleFor >= RECALIBRATION_IDLE_MS && sinceLastCalibration >= RECALIBRATION_INTERVAL_MS) {
+      int recalTolerance = deadZone * RECALIBRATION_CENTER_TOLERANCE;
+      bool nearCenter = abs(centeredX) <= recalTolerance && abs(centeredY) <= recalTolerance;
+
+      if (nearCenter) {
+        if (VIEW_DATA) {
+          Serial.print(F("[RECAL] idle for "));
+          Serial.print(idleFor);
+          Serial.println(F("ms, recalibrating..."));
+        }
+        calibrateCenter("IDLE");
+        lastCalibrationMillis = millis();
+      } else if (VIEW_DATA && !recalSkipAnnounced) {
+        Serial.print(F("[RECAL] skipped - resting off-center (X="));
+        Serial.print(centeredX, 1);
+        Serial.print(F(" Y="));
+        Serial.print(centeredY, 1);
+        Serial.print(F(", tolerance=+-"));
+        Serial.print(recalTolerance);
+        Serial.println(F(")"));
+        recalSkipAnnounced = true;
+      }
+    }
+  }
+
+  // 12. Live debug dump - see VIEW_DATA above.
+  if (VIEW_DATA) {
+    Serial.print(F("X raw="));
+    Serial.print(rawX, 1);
+    Serial.print(F(" out="));
+    Serial.print(reportX);
+    Serial.print(F(" | Y raw="));
+    Serial.print(rawY, 1);
+    Serial.print(F(" out="));
+    Serial.print(reportY);
+    Serial.print(F(" | deadZone="));
+    Serial.print(deadZone);
+    Serial.print(F(" | btn="));
+    Serial.print(buttonPin);
+    Serial.print(F(" | halfPrecision="));
+    Serial.print(halfPrecisionActive);
+    Serial.print(F(" | sent="));
+    Serial.println(changed);
   }
 
   delay(LOOP_INTERVAL_MS);
